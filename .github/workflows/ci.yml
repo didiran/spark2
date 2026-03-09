@@ -1,0 +1,167 @@
+# Spark-Kafka ML Training Pipeline - CI/CD
+# Author: Gabriel Demetrios Lafis
+
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ===========================================================
+  # Lint - Code quality checks
+  # ===========================================================
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run flake8 linter
+        run: |
+          flake8 src/ tests/ main.py --max-line-length=120 --ignore=E501,W503 --statistics
+
+      - name: Run mypy type checker
+        run: |
+          mypy src/ --ignore-missing-imports --no-strict-optional
+
+      - name: Check import ordering with isort
+        run: |
+          isort src/ tests/ main.py --profile black --check-only --diff
+
+      - name: Check code formatting with black
+        run: |
+          black src/ tests/ main.py --line-length=120 --check --diff
+
+  # ===========================================================
+  # Test - Unit and integration tests
+  # ===========================================================
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          python -m pytest tests/ -v \
+            --tb=short \
+            --cov=src \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            --cov-fail-under=60
+
+      - name: Upload coverage artifact
+        if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 14
+
+  # ===========================================================
+  # Build - Docker image build validation
+  # ===========================================================
+  build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          docker build -f docker/Dockerfile -t spark-kafka-ml-pipeline:test .
+
+      - name: Verify Docker image
+        run: |
+          docker run --rm spark-kafka-ml-pipeline:test python -c "import src; print(f'Version: {src.__version__}')"
+
+  # ===========================================================
+  # Pipeline Demo - End-to-end smoke test
+  # ===========================================================
+  pipeline-smoke-test:
+    name: Pipeline Smoke Test
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pipeline smoke test
+        run: |
+          python main.py --samples 500 --batches 2 --seed 42
+
+      - name: Verify outputs
+        run: |
+          test -f demo_results/selection_report.json
+          test -f demo_results/health_report.json
+          echo "Pipeline outputs verified successfully."

@@ -1,0 +1,275 @@
+# Spark-Kafka ML Training Pipeline - Docker Compose
+# Full infrastructure: Kafka + Spark + Pipeline Application
+# Author: Gabriel Demetrios Lafis
+
+version: "3.9"
+
+services:
+  # ===========================================================
+  # Zookeeper - Kafka coordination service
+  # ===========================================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.3
+    container_name: pipeline-zookeeper
+    hostname: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # ===========================================================
+  # Kafka - Distributed event streaming
+  # ===========================================================
+  kafka:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: pipeline-kafka
+    hostname: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:29092", "--list"]
+      interval: 20s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================
+  # Schema Registry - Avro schema management
+  # ===========================================================
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.5.3
+    container_name: pipeline-schema-registry
+    hostname: schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ===========================================================
+  # Spark Master
+  # ===========================================================
+  spark-master:
+    image: bitnami/spark:3.5.1
+    container_name: pipeline-spark-master
+    hostname: spark-master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    environment:
+      SPARK_MODE: master
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: 7077
+      SPARK_MASTER_WEBUI_PORT: 8080
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
+      SPARK_SSL_ENABLED: "no"
+    volumes:
+      - spark-data:/data
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================
+  # Spark Worker
+  # ===========================================================
+  spark-worker:
+    image: bitnami/spark:3.5.1
+    container_name: pipeline-spark-worker
+    hostname: spark-worker
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "8082:8081"
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 2
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
+      SPARK_SSL_ENABLED: "no"
+    volumes:
+      - spark-data:/data
+    networks:
+      - pipeline-network
+
+  # ===========================================================
+  # PostgreSQL - Metadata storage
+  # ===========================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: pipeline-postgres
+    hostname: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ml_pipeline
+      POSTGRES_USER: pipeline_user
+      POSTGRES_PASSWORD: pipeline_pass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pipeline_user -d ml_pipeline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ===========================================================
+  # MLflow - Experiment tracking
+  # ===========================================================
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.10.2
+    container_name: pipeline-mlflow
+    hostname: mlflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://pipeline_user:pipeline_pass@postgres:5432/ml_pipeline
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://pipeline_user:pipeline_pass@postgres:5432/ml_pipeline
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ===========================================================
+  # ML Pipeline Application
+  # ===========================================================
+  ml-pipeline:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pipeline-app
+    hostname: ml-pipeline
+    depends_on:
+      kafka:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+    environment:
+      PIPELINE_ENV: production
+      LOG_LEVEL: INFO
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPARK_MASTER_URL: spark://spark-master:7077
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ml_pipeline
+      POSTGRES_USER: pipeline_user
+      POSTGRES_PASSWORD: pipeline_pass
+    volumes:
+      - pipeline-data:/app/data
+      - pipeline-results:/app/demo_results
+      - pipeline-features:/app/demo_feature_store
+      - pipeline-logs:/app/logs
+    networks:
+      - pipeline-network
+    restart: on-failure
+
+# ===========================================================
+# Volumes
+# ===========================================================
+volumes:
+  zookeeper-data:
+    driver: local
+  zookeeper-logs:
+    driver: local
+  kafka-data:
+    driver: local
+  spark-data:
+    driver: local
+  postgres-data:
+    driver: local
+  mlflow-artifacts:
+    driver: local
+  pipeline-data:
+    driver: local
+  pipeline-results:
+    driver: local
+  pipeline-features:
+    driver: local
+  pipeline-logs:
+    driver: local
+
+# ===========================================================
+# Networks
+# ===========================================================
+networks:
+  pipeline-network:
+    driver: bridge
+    name: spark-kafka-ml-network

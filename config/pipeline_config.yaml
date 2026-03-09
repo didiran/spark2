@@ -1,0 +1,90 @@
+# Spark-Kafka ML Training Pipeline Configuration
+# ================================================
+
+spark:
+  app_name: "spark-kafka-ml-pipeline"
+  master: "local[*]"
+  driver_memory: "4g"
+  executor_memory: "4g"
+  executor_cores: 2
+  num_executors: 2
+  shuffle_partitions: 200
+  default_parallelism: 8
+  adaptive_enabled: true
+  delta_extensions: true
+  serializer: "org.apache.spark.serializer.KryoSerializer"
+
+kafka:
+  bootstrap_servers: "localhost:9092"
+  topics:
+    - "ml-training-data"
+  group_id: "spark-ml-pipeline-consumer"
+  auto_offset_reset: "earliest"
+  max_offsets_per_trigger: 10000
+  schema_registry_url: "http://localhost:8081"
+  security_protocol: "PLAINTEXT"
+  watermark_delay: "10 seconds"
+  checkpoint_location: "/tmp/spark-checkpoints/kafka"
+  starting_offsets: "earliest"
+  fail_on_data_loss: false
+
+storage:
+  delta_base_path: "/data/delta"
+  feature_store_path: "/data/delta/feature_store"
+  raw_data_path: "/data/delta/raw"
+  processed_data_path: "/data/delta/processed"
+  model_artifacts_path: "/data/models"
+  postgres_host: "localhost"
+  postgres_port: 5432
+  postgres_database: "ml_pipeline"
+  postgres_user: "pipeline_user"
+  postgres_password: "pipeline_pass"
+
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "spark-ml-training"
+  artifact_location: "/data/mlflow/artifacts"
+  auto_log_enabled: true
+  log_models: true
+  log_input_examples: true
+  tags:
+    project: "spark-kafka-ml-pipeline"
+    team: "ml-engineering"
+
+training:
+  algorithms:
+    - "random_forest"
+    - "gradient_boosted_trees"
+    - "logistic_regression"
+  target_column: "label"
+  train_ratio: 0.8
+  validation_ratio: 0.1
+  test_ratio: 0.1
+  seed: 42
+  cross_validation_folds: 5
+  primary_metric: "f1"
+  metric_threshold: 0.75
+  max_iterations: 100
+  early_stopping_rounds: 10
+  hyperparameter_grids:
+    random_forest:
+      numTrees: [50, 100, 200]
+      maxDepth: [5, 10, 15]
+      minInstancesPerNode: [1, 5, 10]
+    gradient_boosted_trees:
+      maxIter: [50, 100]
+      maxDepth: [3, 5, 8]
+      stepSize: [0.01, 0.1, 0.3]
+    logistic_regression:
+      maxIter: [50, 100, 200]
+      regParam: [0.0, 0.01, 0.1]
+      elasticNetParam: [0.0, 0.5, 1.0]
+
+pipeline:
+  name: "spark-kafka-ml-training-pipeline"
+  version: "1.0.0"
+  environment: "development"
+  retry_max_attempts: 3
+  retry_delay_seconds: 30
+  batch_processing_interval: "1 hour"
+  stream_trigger_interval: "30 seconds"
