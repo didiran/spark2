@@ -2,26 +2,14 @@ name: Web API Tests
 
 on:
   push:
-    paths:
-      - 'web_app/**'
+    branches: [ main ]
   pull_request:
-    paths:
-      - 'web_app/**'
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    
-    services:
-      kafka:
-        image: confluentinc/cp-kafka:7.5.3
-        ports:
-          - 9092:9092
-        env:
-          KAFKA_BROKER_ID: 1
-          KAFKA_ZOOKEEPER_CONNECT: localhost:2181
-          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     
     steps:
     - uses: actions/checkout@v4
@@ -32,20 +20,9 @@ jobs:
         python-version: '3.11'
     
     - name: Install dependencies
-      working-directory: ./web_app
       run: |
-        pip install -r requirements_web.txt
+        pip install requests
     
-    - name: Run unit tests
-      working-directory: ./web_app
+    - name: Run tests
       run: |
-        pytest tests/test_auth.py tests/test_transactions.py -v
-    
-    - name: Run load tests (optional)
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      working-directory: ./web_app
-      run: |
-        # Запускаем API в фоне
-        uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-        sleep 5
-        pytest tests/test_load.py -v -s
+        python test_api.py
