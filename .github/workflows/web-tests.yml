@@ -23,6 +23,6 @@ jobs:
       run: |
         pip install requests
     
-    - name: Run tests
+    - name: Run CI tests
       run: |
-        python test_api.py
+        python test_ci.py 
