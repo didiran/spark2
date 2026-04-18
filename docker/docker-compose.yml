@@ -26,43 +26,6 @@ services:
       retries: 5
 
   # ===========================================================
-  # Kafka
-  # ===========================================================
-  kafka:
-    image: confluentinc/cp-kafka:7.5.3
-    container_name: pipeline-kafka
-    hostname: kafka
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-    ports:
-      - "9092:9092"
-      - "29092:29092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_NUM_PARTITIONS: 3
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
-      KAFKA_LOG_RETENTION_HOURS: 168
-    volumes:
-      - kafka-data:/var/lib/kafka/data
-    networks:
-      - pipeline-network
-    healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
-      interval: 20s
-      timeout: 15s
-      retries: 5
-      start_period: 30s
-
-  # ===========================================================
   # Kafka UI #1: Kafdrop (clean UI)
   # ===========================================================
   kafdrop:
@@ -70,12 +33,16 @@ services:
     container_name: pipeline-kafdrop
     hostname: kafdrop
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-1:
+        condition: service_started    # не healthy, а просто started
+      kafka-2:
+        condition: service_started
+      kafka-3:
+        condition: service_started
     ports:
       - "9000:9000"
     environment:
-      KAFKA_BROKERCONNECT: kafka:29092
+      KAFKA_BROKERCONNECT: kafka-1:29092,kafka-2:29093,kafka-3:29094
       JVM_OPTS: "-Xms32M -Xmx64M"
       SERVER_SERVLET_CONTEXTPATH: "/"
     networks:
@@ -94,7 +61,11 @@ services:
     container_name: pipeline-akhq
     hostname: akhq
     depends_on:
-      kafka:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
         condition: service_healthy
     ports:
       - "8085:8080"
@@ -104,7 +75,7 @@ services:
           connections:
             docker-kafka:
               properties:
-                bootstrap.servers: "kafka:29092"
+                bootstrap.servers: "kafka-1:29092,kafka-2:29093,kafka-3:29094"
               schema-registry:
                 url: "http://schema-registry:8081"
     networks:
@@ -123,12 +94,16 @@ services:
     container_name: pipeline-redpanda
     hostname: redpanda
     depends_on:
-      kafka:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
         condition: service_healthy
     ports:
       - "8086:8080"
     environment:
-      KAFKA_BROKERS: "kafka:29092"
+      KAFKA_BROKERS: "kafka-1:29092,kafka-2:29093,kafka-3:29094"
       SCHEMA_REGISTRY_ENABLED: "true"
       SCHEMA_REGISTRY_URLS: "http://schema-registry:8081"
     networks:
@@ -147,13 +122,17 @@ services:
     container_name: pipeline-schema-registry
     hostname: schema-registry
     depends_on:
-      kafka:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
         condition: service_healthy
     ports:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29093,kafka-3:29094
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
     networks:
       - pipeline-network
@@ -276,25 +255,134 @@ services:
     image: confluentinc/cp-kafka:7.5.3
     container_name: pipeline-kafka-init
     depends_on:
-      kafka:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command: |
       "
-      echo 'Waiting for Kafka to be ready...'
-      sleep 10
-      echo 'Creating topics...'
-      kafka-topics --create --if-not-exists --topic ml-training-data --partitions 3 --replication-factor 1 --bootstrap-server kafka:29092
-      kafka-topics --create --if-not-exists --topic fraud-transactions --partitions 3 --replication-factor 1 --bootstrap-server kafka:29092
-      kafka-topics --create --if-not-exists --topic iot-sensors --partitions 2 --replication-factor 1 --bootstrap-server kafka:29092
-      kafka-topics --create --if-not-exists --topic financial-trades --partitions 4 --replication-factor 1 --bootstrap-server kafka:29092
+      echo 'Waiting for Kafka cluster to be ready...'
+      sleep 15
+      echo 'Creating topics with replication-factor=3...'
+      kafka-topics --create --if-not-exists --topic ml-training-data \
+        --partitions 3 --replication-factor 3 --bootstrap-server kafka-1:29092
+      kafka-topics --create --if-not-exists --topic fraud-transactions \
+        --partitions 3 --replication-factor 3 --bootstrap-server kafka-1:29092
+      kafka-topics --create --if-not-exists --topic iot-sensors \
+        --partitions 2 --replication-factor 3 --bootstrap-server kafka-1:29092
+      kafka-topics --create --if-not-exists --topic financial-trades \
+        --partitions 4 --replication-factor 3 --bootstrap-server kafka-1:29092
       echo 'Topics created:'
-      kafka-topics --list --bootstrap-server kafka:29092
+      kafka-topics --list --bootstrap-server kafka-1:29092
       echo 'Initialization complete.'
       "
     networks:
       - pipeline-network
-
+    # ===========================================================
+  # Kafka Cluster (3 брокера)
+  # ===========================================================
+  kafka-1:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: pipeline-kafka-1
+    hostname: kafka-1
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 20s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+  kafka-2:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: pipeline-kafka-2
+    hostname: kafka-2
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9093:9093"
+      - "29093:29093"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:29093,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9093", "--list"]
+      interval: 20s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+  kafka-3:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: pipeline-kafka-3
+    hostname: kafka-3
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9094:9094"
+      - "29094:29094"
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:29094,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka-3-data:/var/lib/kafka/data
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9094", "--list"]
+      interval: 20s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
   # ===========================================================
   # Prometheus - metrics collection
   # ===========================================================
@@ -314,7 +402,9 @@ services:
     networks:
       - pipeline-network
     depends_on:
-      - kafka
+      - kafka-1
+      - kafka-2
+      - kafka-3
       - spark-master
       - postgres
     healthcheck:
@@ -358,15 +448,20 @@ services:
     hostname: jmx-exporter
     ports:
       - "5556:5556"
-    volumes:
-      - ./jmx-exporter/kafka.yml:/opt/bitnami/jmx-exporter/conf/config.yml
     command:
       - '5556'
       - '/opt/bitnami/jmx-exporter/conf/config.yml'
+    volumes:
+      - ./jmx-exporter/kafka.yml:/opt/bitnami/jmx-exporter/conf/config.yml:ro
+    environment:
+      KAFKA_JMX_HOST: kafka-1
+      KAFKA_JMX_PORT: 9997
     networks:
       - pipeline-network
     depends_on:
-      - kafka
+      - kafka-1
+      - kafka-2
+      - kafka-3
 
   # ===========================================================
   # PostgreSQL Exporter
@@ -538,7 +633,11 @@ services:
     container_name: pipeline-app
     hostname: ml-pipeline
     depends_on:
-      kafka:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -551,7 +650,11 @@ services:
     environment:
       PIPELINE_ENV: production
       LOG_LEVEL: INFO
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # ИСПРАВЛЕНО: используем правильные имена брокеров
+      KAFKA_BOOTSTRAP_SERVERS: "kafka-1:29092,kafka-2:29093,kafka-3:29094"
+      # Дополнительные настройки Kafka
+      KAFKA_CONSUMER_GROUP_ID: "ml-pipeline-consumer"
+      KAFKA_AUTO_OFFSET_RESET: "earliest"
       SPARK_MASTER_URL: spark://spark-master:7077
       MLFLOW_TRACKING_URI: http://mlflow:5000
       POSTGRES_HOST: postgres
@@ -559,11 +662,6 @@ services:
       POSTGRES_DB: ml_pipeline
       POSTGRES_USER: pipeline_user
       POSTGRES_PASSWORD: pipeline_pass
-      # Jira integration
-      JIRA_BASE_URL: ${JIRA_BASE_URL}
-      JIRA_EMAIL: ${JIRA_EMAIL}
-      JIRA_API_TOKEN: ${JIRA_API_TOKEN}
-      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-MLP}
     volumes:
       - pipeline-data:/app/data
       - pipeline-results:/app/demo_results
@@ -603,14 +701,49 @@ services:
       fi
       /entrypoint.sh
       "
+  # ===========================================================
+  # Web API для отправки транзакций
+  # ===========================================================
+  web-api:
+    build:
+      context: ../web_app
+      dockerfile: Dockerfile.web
+    container_name: pipeline-web-api
+    hostname: web-api
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29093,kafka-3:29094
+      DATABASE_URL: postgresql://pipeline_user:pipeline_pass@postgres:5432/transactions_db
+      SECRET_KEY: your-super-secret-key-change-in-production-2024
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+    networks:
+      - pipeline-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
 # ===========================================================
 # Volumes
 # ===========================================================
 volumes:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
   zookeeper-data:
   zookeeper-logs:
-  kafka-data:
   spark-data:
   postgres-data:
   mlflow-artifacts:

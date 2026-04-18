@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraud Detection API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        .endpoint {
+            background: #e8f4f8;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        .method { color: #0066cc; font-weight: bold; }
+        .url { color: #009933; }
+        code {
+            background: #f4f4f4;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status.healthy { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Fraud Detection API</h1>
+        <p>API для отправки транзакций в Kafka и ML pipeline</p>
+        
+        <h2>📡 Endpoints</h2>
+        
+        <div class="endpoint">
+            <span class="method">POST</span> 
+            <span class="url">/api/auth/register</span><br>
+            <small>Регистрация нового пользователя</small>
+        </div>
+        
+        <div class="endpoint">
+            <span class="method">POST</span> 
+            <span class="url">/api/auth/login</span><br>
+            <small>Авторизация (получение JWT токена)</small>
+        </div>
+        
+        <div class="endpoint">
+            <span class="method">POST</span> 
+            <span class="url">/api/transactions/send</span><br>
+            <small>Отправка транзакции (требуется авторизация)</small>
+        </div>
+        
+        <div class="endpoint">
+            <span class="method">GET</span> 
+            <span class="url">/api/transactions/history</span><br>
+            <small>История транзакций (требуется авторизация)</small>
+        </div>
+        
+        <div class="endpoint">
+            <span class="method">GET</span> 
+            <span class="url">/health</span><br>
+            <small>Health check</small>
+        </div>
+        
+        <h2>🔧 Примеры использования</h2>
+        
+        <h3>Регистрация:</h3>
+        <code>
+        curl -X POST http://localhost:8000/api/auth/register \<br>
+        &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+        &nbsp;&nbsp;-d '{"username":"test","email":"test@test.com","password":"pass123"}'
+        </code>
+        
+        <h3>Логин:</h3>
+        <code>
+        curl -X POST http://localhost:8000/api/auth/login \<br>
+        &nbsp;&nbsp;-H "Content-Type: application/x-www-form-urlencoded" \<br>
+        &nbsp;&nbsp;-d "username=test&password=pass123"
+        </code>
+        
+        <h3>Отправка транзакции:</h3>
+        <code>
+        curl -X POST http://localhost:8000/api/transactions/send \<br>
+        &nbsp;&nbsp;-H "Authorization: Bearer &lt;token&gt;" \<br>
+        &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+        &nbsp;&nbsp;-d '{"amount":150.75,"merchant_category":"restaurant","card_type":"mastercard"}'
+        </code>
+        
+        <h2>📊 Статус сервера</h2>
+        <div>
+            <span class="status healthy">● Healthy</span>
+            <span id="status-text">Проверка...</span>
+        </div>
+    </div>
+    
+    <script>
+        fetch('/health')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('status-text').innerText = 
+                    `Сервер работает | ${data.service}`;
+            })
+            .catch(err => {
+                document.getElementById('status-text').innerText = 'Ошибка подключения';
+            });
+    </script>
+</body>
+</html>

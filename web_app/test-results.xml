@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="3" failures="0" skipped="0" tests="5" time="1.045" timestamp="2026-04-18T11:36:22.037962+00:00" hostname="4c2df4c9e868"><testcase classname="tests.test_simple.TestAPI" name="test_health" time="0.005" /><testcase classname="tests.test_simple.TestAPI" name="test_register" time="0.307" /><testcase classname="tests.test_simple.TestAPI" name="test_login" time="0.000"><error message="failed on setup with &quot;file /workspace/tests/test_simple.py, line 36&#10;      @staticmethod&#10;      def test_login(username):&#10;E       fixture 'username' not found&#10;&gt;       available fixtures: cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;/workspace/tests/test_simple.py:36&quot;">file /workspace/tests/test_simple.py, line 36
+      @staticmethod
+      def test_login(username):
+E       fixture 'username' not found
+&gt;       available fixtures: cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+/workspace/tests/test_simple.py:36</error></testcase><testcase classname="tests.test_simple.TestAPI" name="test_send_transaction" time="0.000"><error message="failed on setup with &quot;file /workspace/tests/test_simple.py, line 48&#10;      @staticmethod&#10;      def test_send_transaction(token):&#10;E       fixture 'token' not found&#10;&gt;       available fixtures: cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;/workspace/tests/test_simple.py:48&quot;">file /workspace/tests/test_simple.py, line 48
+      @staticmethod
+      def test_send_transaction(token):
+E       fixture 'token' not found
+&gt;       available fixtures: cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+/workspace/tests/test_simple.py:48</error></testcase><testcase classname="tests.test_simple.TestAPI" name="test_history" time="0.000"><error message="failed on setup with &quot;file /workspace/tests/test_simple.py, line 70&#10;      @staticmethod&#10;      def test_history(token):&#10;E       fixture 'token' not found&#10;&gt;       available fixtures: cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;/workspace/tests/test_simple.py:70&quot;">file /workspace/tests/test_simple.py, line 70
+      @staticmethod
+      def test_history(token):
+E       fixture 'token' not found
+&gt;       available fixtures: cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+/workspace/tests/test_simple.py:70</error></testcase></testsuite></testsuites>

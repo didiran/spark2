@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Установка зависимостей
+COPY requirements_web.txt .
+RUN pip install --no-cache-dir -r requirements_web.txt
+
+# Копирование приложения
+COPY app/ ./app/
+COPY templates/ ./templates/
+COPY static/ ./static/
+
+# Создание непривилегированного пользователя
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
